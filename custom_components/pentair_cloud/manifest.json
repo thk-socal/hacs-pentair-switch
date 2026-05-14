@@ -1,12 +1,12 @@
 {
   "domain": "pentair_cloud",
-  "name": "Pentair Home",
-  "codeowners": ["@natekspencer"],
+  "name": "Pentair Cloud - Status and Switch",
+  "codeowners": ["@nthk-socal"],
   "config_flow": true,
-  "documentation": "https://github.com/natekspencer/hacs-pentair",
+  "documentation": "https://github.com/thk-socal/hacs-pentair-switch",
   "integration_type": "hub",
   "iot_class": "cloud_polling",
-  "issue_tracker": "https://github.com/natekspencer/hacs-pentair/issues",
+  "issue_tracker": "https://github.com/thk-socal/hacs-pentair-switch/issues",
   "loggers": ["custom_components.pentair_cloud", "pypentair", "botocore"],
   "requirements": ["pypentair==0.4.1"],
   "version": "0.0.0"
