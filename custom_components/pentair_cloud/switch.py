@@ -1,9 +1,4 @@
-"""Pentair Home pump-program switches.
-
-Drop this file into custom_components/pentair_cloud/switch.py in natekspencer/hacs-pentair.
-It adds switch entities for IF31 / IntelliFlo 3 pump programs using the same Pentair
-cloud program-control fields used by SPD13/pentair_cloud.
-"""
+"""Pentair Home pump-program switches."""
 
 from __future__ import annotations
 
@@ -13,8 +8,9 @@ import logging
 from typing import Any
 from urllib.parse import urljoin
 
-import requests
 from botocore.awsrequest import AWSRequest
+import requests
+
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
@@ -28,8 +24,6 @@ _LOGGER = logging.getLogger(__name__)
 
 BASE_URL = "https://api.pentair.cloud/"
 DEVICE_SERVICE_PATH = "device/device-service/user/device/{device_id}"
-
-# SPD13 limited visible programs to 1..8 even though more fields may exist.
 PROGRAM_RANGE = range(1, 9)
 
 
@@ -79,7 +73,10 @@ def _programs_from_device_data(data: dict[str, Any]) -> list[PumpProgram]:
         if not enabled:
             continue
 
-        name = str(_field_value(fields, f"zp{program_id}e2", f"Program {program_id}")).strip()
+        name = str(
+            _field_value(fields, f"zp{program_id}e2", f"Program {program_id}")
+        ).strip()
+
         raw_type = _field_value(fields, f"zp{program_id}e5")
         try:
             program_type = int(raw_type)
@@ -97,7 +94,12 @@ def _programs_from_device_data(data: dict[str, Any]) -> list[PumpProgram]:
     return programs
 
 
-def _signed_pentair_request(client: Any, method: str, path: str, payload: dict[str, Any]) -> dict[str, Any]:
+def _signed_pentair_request(
+    client: Any,
+    method: str,
+    path: str,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
     """Send a signed Pentair Cloud request using the existing pypentair client auth."""
     url = urljoin(BASE_URL, path)
     body = json.dumps(payload)
@@ -112,23 +114,30 @@ def _signed_pentair_request(client: Any, method: str, path: str, payload: dict[s
             "user-agent": "aws-amplify/4.3.10 react-native",
         },
     )
+
     client.get_auth().add_auth(request)
     prepared = request.prepare()
 
     response = requests.request(
         method=method.upper(),
-        prepared.url,
+        url=prepared.url,
         data=body,
-        headers=prepared.headers,
+        headers=dict(prepared.headers),
         timeout=10,
     )
     response.raise_for_status()
     return response.json()
 
 
-def _set_program(client: Any, device_id: str, program: PumpProgram, value: str) -> None:
+def _set_program(
+    client: Any,
+    device_id: str,
+    program: PumpProgram,
+    value: str,
+) -> None:
     """Set a pump program command field."""
     path = DEVICE_SERVICE_PATH.format(device_id=device_id)
+
     response = _signed_pentair_request(
         client,
         "PUT",
@@ -137,7 +146,9 @@ def _set_program(client: Any, device_id: str, program: PumpProgram, value: str) 
     )
 
     if response.get("data", {}).get("code") != "set_device_success":
-        raise RuntimeError(f"Unexpected Pentair response while controlling program: {response}")
+        raise RuntimeError(
+            f"Unexpected Pentair response while controlling program: {response}"
+        )
 
 
 def _set_last_active_program(client: Any, device_id: str, value: str) -> None:
@@ -157,15 +168,16 @@ async def async_setup_entry(
 
     for device_coordinator in root_coordinator.device_coordinators:
         data = device_coordinator.get_device_data()
+
         if not data or data.get("deviceType") != "IF31":
             continue
 
         device_id = data["deviceId"]
+
         for program in _programs_from_device_data(data):
             entities.append(
                 PentairPumpProgramSwitch(
                     coordinator=device_coordinator,
-                    config_entry=config_entry,
                     device_id=device_id,
                     program=program,
                 )
@@ -176,7 +188,8 @@ async def async_setup_entry(
 
 
 class PentairPumpProgramSwitch(
-    CoordinatorEntity[PentairDeviceDataUpdateCoordinator], SwitchEntity
+    CoordinatorEntity[PentairDeviceDataUpdateCoordinator],
+    SwitchEntity,
 ):
     """Switch entity for an IntelliFlo 3 pump program."""
 
@@ -185,30 +198,34 @@ class PentairPumpProgramSwitch(
     def __init__(
         self,
         coordinator: PentairDeviceDataUpdateCoordinator,
-        config_entry: PentairConfigEntry,
         device_id: str,
         program: PumpProgram,
     ) -> None:
+        """Initialize the switch."""
         super().__init__(coordinator)
-        self._config_entry = config_entry
+
         self._device_id = device_id
         self._program = program
+
         self._attr_name = f"P{program.program_id} / {program.name}"
         self._attr_unique_id = f"{device_id}-program-{program.program_id}"
 
         device = self._device_data or {}
         product_info = device.get("productInfo", {})
         model = product_info.get("model")
+
         self._attr_device_info = {
             "identifiers": {(DOMAIN, device_id)},
             "manufacturer": product_info.get("maker", "Pentair"),
-            "model": device.get("pname", "Pentair pump") + (f" ({model})" if model else ""),
+            "model": device.get("pname", "Pentair pump")
+            + (f" ({model})" if model else ""),
             "name": product_info.get("nickName", "Pentair pump"),
             "sw_version": device.get("fwVersion"),
         }
 
     @property
     def _device_data(self) -> dict[str, Any] | None:
+        """Return the current pump device data."""
         return self.coordinator.get_device_data()
 
     @property
@@ -217,12 +234,14 @@ class PentairPumpProgramSwitch(
         data = self._device_data
         if not data:
             return None
+
         active = _active_program_id(data.get("fields", {}))
         return active == self._program.program_id
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Start this pump program."""
         client = self.coordinator.api
+
         await self.hass.async_add_executor_job(
             _set_program,
             client,
@@ -230,18 +249,20 @@ class PentairPumpProgramSwitch(
             self._program,
             self._program.start_value,
         )
-        # The Pentair app also writes p2="99" after starting a program.
+
         await self.hass.async_add_executor_job(
             _set_last_active_program,
             client,
             self._device_id,
             "99",
         )
+
         await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Stop this pump program."""
         client = self.coordinator.api
+
         await self.hass.async_add_executor_job(
             _set_program,
             client,
@@ -249,11 +270,12 @@ class PentairPumpProgramSwitch(
             self._program,
             self._program.stop_value,
         )
-        # The Pentair app writes p2 to the zero-indexed previous active program.
+
         await self.hass.async_add_executor_job(
             _set_last_active_program,
             client,
             self._device_id,
             str(self._program.program_id - 1),
         )
+
         await self.coordinator.async_request_refresh()
