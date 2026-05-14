@@ -178,6 +178,7 @@ async def async_setup_entry(
             entities.append(
                 PentairPumpProgramSwitch(
                     coordinator=device_coordinator,
+                    config_entry=config_entry,
                     device_id=device_id,
                     program=program,
                 )
@@ -198,12 +199,14 @@ class PentairPumpProgramSwitch(
     def __init__(
         self,
         coordinator: PentairDeviceDataUpdateCoordinator,
+        config_entry: PentairConfigEntry,
         device_id: str,
         program: PumpProgram,
     ) -> None:
         """Initialize the switch."""
         super().__init__(coordinator)
 
+        self._config_entry = config_entry
         self._device_id = device_id
         self._program = program
 
