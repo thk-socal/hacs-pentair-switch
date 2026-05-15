@@ -19,12 +19,12 @@ from .coordinator import (
     PentairDeviceDataUpdateCoordinator,
 )
 
+# Typing aliases
 type PentairConfigEntry = ConfigEntry[PentairDataUpdateCoordinator]
 
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS = [Platform.BINARY_SENSOR, Platform.SENSOR, Platform.SWITCH]
-
 
 async def async_setup_entry(hass: HomeAssistant, entry: PentairConfigEntry) -> bool:
     """Set up Pentair from a config entry."""
@@ -44,14 +44,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: PentairConfigEntry) -> b
     except Exception as ex:
         raise ConfigEntryNotReady(ex) from ex
 
+    # Full system refresh coordinator
     coordinator = PentairDataUpdateCoordinator(
-        hass=hass, config_entry=entry, client=client
+        hass=hass, config_entry=entry, client=client, polling_interval=300
     )
     await coordinator.async_config_entry_first_refresh()
 
+    # Device-level coordinators with separate intervals
     for device in coordinator.get_devices():
         device_coordinator = PentairDeviceDataUpdateCoordinator(
-            hass=hass, config_entry=entry, client=client, device_id=device["deviceId"]
+            hass=hass, config_entry=entry, client=client, device_id=device["deviceId"], polling_interval=60
         )
         coordinator.device_coordinators.append(device_coordinator)
 
@@ -68,11 +70,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: PentairConfigEntry) -> b
 
     return True
 
-
 async def async_unload_entry(hass: HomeAssistant, entry: PentairConfigEntry) -> bool:
     """Unload config entry."""
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-
 
 async def async_remove_entry(hass: HomeAssistant, entry: PentairConfigEntry) -> None:
     """Handle removal of an entry."""
@@ -87,11 +87,9 @@ async def async_remove_entry(hass: HomeAssistant, entry: PentairConfigEntry) -> 
     except Exception:  # noqa: BLE001
         _LOGGER.debug("Failed to logout during entry removal", exc_info=True)
 
-
 async def update_listener(hass: HomeAssistant, entry: PentairConfigEntry) -> None:
     """Handle options update."""
     await hass.config_entries.async_reload(entry.entry_id)
-
 
 async def async_remove_config_entry_device(
     hass: HomeAssistant, config_entry: PentairConfigEntry, device_entry: DeviceEntry
