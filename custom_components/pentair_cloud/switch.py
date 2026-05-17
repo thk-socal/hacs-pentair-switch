@@ -227,6 +227,9 @@ class PentairPumpProgramSwitch(
     @property
     def is_on(self) -> bool | None:
         """Return whether this pump program is currently running."""
+        if self._optimistic_is_on is not None:
+            return self._optimistic_is_on
+
         data = self._device_data
         if not data:
             return None
