@@ -26,9 +26,10 @@ _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS = [Platform.BINARY_SENSOR, Platform.SENSOR, Platform.SWITCH]
 
+
 async def async_setup_entry(hass: HomeAssistant, entry: PentairConfigEntry) -> bool:
     """Set up Pentair from a config entry."""
-    entry.add_update_listener(update_listener)
+    entry.async_on_unload(entry.add_update_listener(update_listener))
 
     client = Pentair(
         username=entry.data.get(CONF_USERNAME),
@@ -48,13 +49,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: PentairConfigEntry) -> b
     coordinator = PentairDataUpdateCoordinator(
         hass=hass,
         config_entry=entry,
-    	client=client,
+        client=client,
     )
 
     await coordinator.async_config_entry_first_refresh()
 
     for device in coordinator.get_devices():
-        	device_coordinator = PentairDeviceDataUpdateCoordinator(
+        device_coordinator = PentairDeviceDataUpdateCoordinator(
             hass=hass,
             config_entry=entry,
             client=client,
@@ -63,7 +64,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: PentairConfigEntry) -> b
             base_device=device,
         )
         coordinator.device_coordinators.append(device_coordinator)
-    
+
     await asyncio.gather(
         *(
             dc.async_config_entry_first_refresh()
@@ -77,9 +78,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: PentairConfigEntry) -> b
 
     return True
 
+
 async def async_unload_entry(hass: HomeAssistant, entry: PentairConfigEntry) -> bool:
     """Unload config entry."""
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+
 
 async def async_remove_entry(hass: HomeAssistant, entry: PentairConfigEntry) -> None:
     """Handle removal of an entry."""
@@ -89,17 +92,22 @@ async def async_remove_entry(hass: HomeAssistant, entry: PentairConfigEntry) -> 
         id_token=entry.data.get(CONF_ID_TOKEN),
         refresh_token=entry.data.get(CONF_REFRESH_TOKEN),
     )
+
     try:
         await hass.async_add_executor_job(client.logout)
     except Exception:  # noqa: BLE001
         _LOGGER.debug("Failed to logout during entry removal", exc_info=True)
 
+
 async def update_listener(hass: HomeAssistant, entry: PentairConfigEntry) -> None:
     """Handle options update."""
     await hass.config_entries.async_reload(entry.entry_id)
 
+
 async def async_remove_config_entry_device(
-    hass: HomeAssistant, config_entry: PentairConfigEntry, device_entry: DeviceEntry
+    hass: HomeAssistant,
+    config_entry: PentairConfigEntry,
+    device_entry: DeviceEntry,
 ) -> bool:
     """Remove a config entry from a device."""
     return not any(
