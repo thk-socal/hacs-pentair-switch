@@ -140,17 +140,23 @@ class PentairDeviceDataUpdateCoordinator(DataUpdateCoordinator):
         config_entry: ConfigEntry,
         client: Pentair,
         device_id: str,
+        device_type: str | None = None,
+        base_device: dict[str, Any] | None = None,
     ) -> None:
         """Initialize."""
         self.api = client
         self.device_id = device_id
+        self.device_type = device_type
+        self.base_device = base_device or {}
+
+        update_seconds = 30 if device_type == "IF31" else 300
 
         super().__init__(
             hass,
             _LOGGER,
             config_entry=config_entry,
-            name=DOMAIN,
-            update_interval=timedelta(seconds=UPDATE_INTERVAL),
+            name=f"{DOMAIN}_{device_id}",
+            update_interval=timedelta(seconds=update_seconds),
         )
 
     def get_device_data(self) -> dict | None:
