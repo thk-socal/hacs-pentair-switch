@@ -26,6 +26,7 @@ BASE_URL = "https://api.pentair.cloud/"
 DEVICE_SERVICE_PATH = "device/device-service/user/device/{device_id}"
 PROGRAM_RANGE = range(1, 9)
 
+
 @dataclass(frozen=True)
 class PumpProgram:
     """A pump program defined on an IntelliFlo 3 device."""
@@ -44,12 +45,14 @@ class PumpProgram:
         """Return the Pentair API value used to stop this program."""
         return "2"
 
+
 def _field_value(fields: dict[str, Any], key: str, default: Any = None) -> Any:
     """Return a Pentair field value from either raw or wrapped field objects."""
     value = fields.get(key, default)
     if isinstance(value, dict):
         return value.get("value", default)
     return value
+
 
 def _active_program_id(fields: dict[str, Any]) -> int | None:
     """Return the active program id using Pentair's zero-indexed s14 field."""
@@ -58,6 +61,7 @@ def _active_program_id(fields: dict[str, Any]) -> int | None:
         return int(raw) + 1
     except (TypeError, ValueError):
         return None
+
 
 def _programs_from_device_data(data: dict[str, Any]) -> list[PumpProgram]:
     """Build the list of active/configured programs for an IF31 pump."""
@@ -88,6 +92,7 @@ def _programs_from_device_data(data: dict[str, Any]) -> list[PumpProgram]:
         )
 
     return programs
+
 
 def _signed_pentair_request(
     client: Any,
@@ -123,6 +128,7 @@ def _signed_pentair_request(
     response.raise_for_status()
     return response.json()
 
+
 def _set_program(
     client: Any,
     device_id: str,
@@ -144,10 +150,12 @@ def _set_program(
             f"Unexpected Pentair response while controlling program: {response}"
         )
 
+
 def _set_last_active_program(client: Any, device_id: str, value: str) -> None:
     """Mirror the Pentair Home app's p2 update after program start/stop."""
     path = DEVICE_SERVICE_PATH.format(device_id=device_id)
     _signed_pentair_request(client, "PUT", path, {"payload": {"p2": value}})
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -179,6 +187,7 @@ async def async_setup_entry(
     if entities:
         async_add_entities(entities)
 
+
 class PentairPumpProgramSwitch(
     CoordinatorEntity[PentairDeviceDataUpdateCoordinator],
     SwitchEntity,
@@ -200,7 +209,6 @@ class PentairPumpProgramSwitch(
         self._config_entry = config_entry
         self._device_id = device_id
         self._program = program
-
         self._optimistic_is_on: bool | None = None
 
         self._attr_name = f"P{program.program_id} / {program.name}"
@@ -224,18 +232,27 @@ class PentairPumpProgramSwitch(
         """Return the current pump device data."""
         return self.coordinator.get_device_data()
 
-    @property
-    def is_on(self) -> bool | None:
-        """Return whether this pump program is currently running."""
-        if self._optimistic_is_on is not None:
-            return self._optimistic_is_on
-
+    def _confirmed_is_on(self) -> bool | None:
+        """Return confirmed running state from coordinator data."""
         data = self._device_data
         if not data:
             return None
 
         active = _active_program_id(data.get("fields", {}))
         return active == self._program.program_id
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return whether this pump program is currently running."""
+        confirmed = self._confirmed_is_on()
+
+        if self._optimistic_is_on is not None:
+            if confirmed == self._optimistic_is_on:
+                self._optimistic_is_on = None
+                return confirmed
+            return self._optimistic_is_on
+
+        return confirmed
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Start this pump program."""
@@ -260,8 +277,6 @@ class PentairPumpProgramSwitch(
         self.async_write_ha_state()
 
         await self.coordinator.async_request_refresh()
-        self._optimistic_is_on = None
-        self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Stop this pump program."""
@@ -281,5 +296,8 @@ class PentairPumpProgramSwitch(
             self._device_id,
             str(self._program.program_id - 1),
         )
+
+        self._optimistic_is_on = False
+        self.async_write_ha_state()
 
         await self.coordinator.async_request_refresh()
