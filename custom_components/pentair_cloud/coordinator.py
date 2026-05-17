@@ -168,24 +168,26 @@ class PentairDeviceDataUpdateCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self):
         """Update data via library, refresh token if necessary."""
         try:
-            if device := await self.hass.async_add_executor_job(
-                _get_device2_status, self.api, self.device_id
-            ):
-                diff = DeepDiff(
-                    self.data,
-                    device,
-                    ignore_order=True,
-                    report_repetition=True,
-                    verbose_level=2,
-                )
-                _LOGGER.debug(
-                    "Device %s updated: %s",
+            if self.device_type == "IF31":
+                status = await self.hass.async_add_executor_job(
+                    _get_device2_status,
+                    self.api,
                     self.device_id,
-                    diff if diff else "no changes",
                 )
+
+                if status:
+                    merged = dict(self.base_device)
+                    merged.update(status)
+                    return {"data": merged}
+
+            if device := await self.hass.async_add_executor_job(
+                self.api.get_device,
+                self.device_id,
+            ):
                 return device
-        except Exception as err:  # pylint: disable=broad-except
-            _LOGGER.exception("Unknown exception while updating Pentair device data: %s", err)
+
+        except Exception as err:
+            _LOGGER.exception("Unknown exception while updating Pentair data: %s", err)
             raise UpdateFailed(err) from err
-        else:
-            return None
+
+        return None
