@@ -26,7 +26,6 @@ BASE_URL = "https://api.pentair.cloud/"
 DEVICE_SERVICE_PATH = "device/device-service/user/device/{device_id}"
 PROGRAM_RANGE = range(1, 9)
 
-
 @dataclass(frozen=True)
 class PumpProgram:
     """A pump program defined on an IntelliFlo 3 device."""
@@ -45,14 +44,12 @@ class PumpProgram:
         """Return the Pentair API value used to stop this program."""
         return "2"
 
-
 def _field_value(fields: dict[str, Any], key: str, default: Any = None) -> Any:
     """Return a Pentair field value from either raw or wrapped field objects."""
     value = fields.get(key, default)
     if isinstance(value, dict):
         return value.get("value", default)
     return value
-
 
 def _active_program_id(fields: dict[str, Any]) -> int | None:
     """Return the active program id using Pentair's zero-indexed s14 field."""
@@ -61,7 +58,6 @@ def _active_program_id(fields: dict[str, Any]) -> int | None:
         return int(raw) + 1
     except (TypeError, ValueError):
         return None
-
 
 def _programs_from_device_data(data: dict[str, Any]) -> list[PumpProgram]:
     """Build the list of active/configured programs for an IF31 pump."""
@@ -92,7 +88,6 @@ def _programs_from_device_data(data: dict[str, Any]) -> list[PumpProgram]:
         )
 
     return programs
-
 
 def _signed_pentair_request(
     client: Any,
@@ -128,7 +123,6 @@ def _signed_pentair_request(
     response.raise_for_status()
     return response.json()
 
-
 def _set_program(
     client: Any,
     device_id: str,
@@ -150,12 +144,10 @@ def _set_program(
             f"Unexpected Pentair response while controlling program: {response}"
         )
 
-
 def _set_last_active_program(client: Any, device_id: str, value: str) -> None:
     """Mirror the Pentair Home app's p2 update after program start/stop."""
     path = DEVICE_SERVICE_PATH.format(device_id=device_id)
     _signed_pentair_request(client, "PUT", path, {"payload": {"p2": value}})
-
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -187,7 +179,6 @@ async def async_setup_entry(
     if entities:
         async_add_entities(entities)
 
-
 class PentairPumpProgramSwitch(
     CoordinatorEntity[PentairDeviceDataUpdateCoordinator],
     SwitchEntity,
@@ -209,6 +200,8 @@ class PentairPumpProgramSwitch(
         self._config_entry = config_entry
         self._device_id = device_id
         self._program = program
+
+        self._optimistic_is_on: bool | None = None
 
         self._attr_name = f"P{program.program_id} / {program.name}"
         self._attr_unique_id = f"{device_id}-program-{program.program_id}"
