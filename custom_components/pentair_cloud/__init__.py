@@ -46,17 +46,24 @@ async def async_setup_entry(hass: HomeAssistant, entry: PentairConfigEntry) -> b
 
     # Full system refresh coordinator
     coordinator = PentairDataUpdateCoordinator(
-        hass=hass, config_entry=entry, client=client, polling_interval=300
+        hass=hass,
+        config_entry=entry,
+    	client=client,
     )
+
     await coordinator.async_config_entry_first_refresh()
 
-    # Device-level coordinators with separate intervals
     for device in coordinator.get_devices():
-        device_coordinator = PentairDeviceDataUpdateCoordinator(
-            hass=hass, config_entry=entry, client=client, device_id=device["deviceId"], polling_interval=60
+        	device_coordinator = PentairDeviceDataUpdateCoordinator(
+            hass=hass,
+            config_entry=entry,
+            client=client,
+            device_id=device["deviceId"],
+            device_type=device.get("deviceType"),
+            base_device=device,
         )
         coordinator.device_coordinators.append(device_coordinator)
-
+    
     await asyncio.gather(
         *(
             dc.async_config_entry_first_refresh()
