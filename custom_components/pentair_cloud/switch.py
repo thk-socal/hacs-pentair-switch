@@ -256,7 +256,12 @@ class PentairPumpProgramSwitch(
             "99",
         )
 
+        self._optimistic_is_on = True
+        self.async_write_ha_state()
+
         await self.coordinator.async_request_refresh()
+        self._optimistic_is_on = None
+        self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Stop this pump program."""
