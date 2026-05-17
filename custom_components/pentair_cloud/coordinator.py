@@ -20,10 +20,15 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
-UPDATE_INTERVAL = 30
+
+ROOT_UPDATE_INTERVAL = 300
+PUMP_UPDATE_INTERVAL = 30
+DEFAULT_DEVICE_UPDATE_INTERVAL = 300
+PUMP_DEVICE_TYPES = {"IF31"}
 
 BASE_URL = "https://api.pentair.cloud/"
 DEVICE2_STATUS_PATH = "device2/device2-service/user/device"
+
 
 def _signed_pentair_request(
     client: Any,
@@ -59,6 +64,7 @@ def _signed_pentair_request(
     response.raise_for_status()
     return response.json()
 
+
 def _get_device2_status(client: Any, device_id: str) -> dict[str, Any] | None:
     """Fetch fresher IF31 pump status from Pentair's device2 endpoint."""
     response = _signed_pentair_request(
@@ -74,15 +80,19 @@ def _get_device2_status(client: Any, device_id: str) -> dict[str, Any] | None:
 
     return None
 
+
 class PentairDataUpdateCoordinator(DataUpdateCoordinator):
     """Class to manage fetching data from the API."""
 
     def __init__(
-        self, hass: HomeAssistant, config_entry: ConfigEntry, client: Pentair
+        self,
+        hass: HomeAssistant,
+        config_entry: ConfigEntry,
+        client: Pentair,
     ) -> None:
         """Initialize."""
         self.api = client
-        self.devices: dict[str, list[dict[str, Any]]] = {}
+        self.devices: dict[str, Any] = {}
         self.device_coordinators: list[PentairDeviceDataUpdateCoordinator] = []
 
         super().__init__(
@@ -90,7 +100,7 @@ class PentairDataUpdateCoordinator(DataUpdateCoordinator):
             _LOGGER,
             config_entry=config_entry,
             name=DOMAIN,
-            update_interval=timedelta(seconds=UPDATE_INTERVAL),
+            update_interval=timedelta(seconds=ROOT_UPDATE_INTERVAL),
         )
 
     def get_device(self, device_id: str) -> dict | None:
@@ -112,22 +122,31 @@ class PentairDataUpdateCoordinator(DataUpdateCoordinator):
             if device_type is None or device["deviceType"] == device_type
         ]
 
-    async def _async_update_data(self):
+    async def _async_update_data(self) -> dict[str, Any]:
         """Update data via library, refresh token if necessary."""
         try:
-            if devices := await self.hass.async_add_executor_job(self.api.get_devices):
-                diff = DeepDiff(
-                    self.devices,
-                    devices,
-                    ignore_order=True,
-                    report_repetition=True,
-                    verbose_level=2,
-                )
-                _LOGGER.debug("Devices updated: %s", diff if diff else "no changes")
+            devices = await self.hass.async_add_executor_job(self.api.get_devices)
+
+            if devices:
+                if _LOGGER.isEnabledFor(logging.DEBUG):
+                    diff = DeepDiff(
+                        self.devices,
+                        devices,
+                        ignore_order=True,
+                        report_repetition=True,
+                        verbose_level=2,
+                    )
+                    _LOGGER.debug(
+                        "Devices updated: %s",
+                        diff if diff else "no changes",
+                    )
+
                 self.devices = devices
+
         except Exception as err:  # pylint: disable=broad-except
             _LOGGER.exception("Unknown exception while updating Pentair data: %s", err)
             raise UpdateFailed(err) from err
+
         return self.devices
 
 
@@ -149,7 +168,11 @@ class PentairDeviceDataUpdateCoordinator(DataUpdateCoordinator):
         self.device_type = device_type
         self.base_device = base_device or {}
 
-        update_seconds = 30 if device_type == "IF31" else 300
+        update_seconds = (
+            PUMP_UPDATE_INTERVAL
+            if device_type in PUMP_DEVICE_TYPES
+            else DEFAULT_DEVICE_UPDATE_INTERVAL
+        )
 
         super().__init__(
             hass,
@@ -165,10 +188,10 @@ class PentairDeviceDataUpdateCoordinator(DataUpdateCoordinator):
             return data
         return None
 
-    async def _async_update_data(self):
+    async def _async_update_data(self) -> dict[str, Any] | None:
         """Update data via library, refresh token if necessary."""
         try:
-            if self.device_type == "IF31":
+            if self.device_type in PUMP_DEVICE_TYPES:
                 status = await self.hass.async_add_executor_job(
                     _get_device2_status,
                     self.api,
@@ -176,17 +199,26 @@ class PentairDeviceDataUpdateCoordinator(DataUpdateCoordinator):
                 )
 
                 if status:
+                    status_data = status.get("data", status)
                     merged = dict(self.base_device)
-                    merged.update(status)
+                    merged.update(status_data)
                     return {"data": merged}
 
-            if device := await self.hass.async_add_executor_job(
+                _LOGGER.debug(
+                    "No device2 status returned for IF31 device %s; "
+                    "falling back to get_device",
+                    self.device_id,
+                )
+
+            device = await self.hass.async_add_executor_job(
                 self.api.get_device,
                 self.device_id,
-            ):
+            )
+
+            if device:
                 return device
 
-        except Exception as err:
+        except Exception as err:  # pylint: disable=broad-except
             _LOGGER.exception("Unknown exception while updating Pentair data: %s", err)
             raise UpdateFailed(err) from err
 
